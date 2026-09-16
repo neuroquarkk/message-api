@@ -33,6 +33,7 @@ func main() {
 
 	mux.HandleFunc("POST /messages", hdl.CreateMessage)
 	mux.HandleFunc("GET /messages", hdl.ListMessages)
+	mux.HandleFunc("POST /messages/{messageId}/reactions", hdl.CreateReaction)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.PORT,
