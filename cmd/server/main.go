@@ -9,6 +9,7 @@ import (
 
 	"message-api/internal/config"
 	"message-api/internal/db"
+	"message-api/internal/handler"
 	"message-api/internal/middleware"
 )
 
@@ -27,7 +28,11 @@ func main() {
 	defer pconn.Close()
 	log.Println("postgres connected")
 
+	hdl := handler.New(pconn)
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("POST /messages", hdl.CreateMessage)
+	mux.HandleFunc("GET /messages", hdl.ListMessages)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.PORT,
