@@ -18,14 +18,16 @@ func New(pconn *pgxpool.Pool) *Handler {
 }
 
 func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
-	var data struct {
-		MessageText string `json:"message_text"`
-		UserId      string `json:"user_id"`
-	}
+	var data CreateMessageReq
 
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := data.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -143,20 +145,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateReaction(w http.ResponseWriter, r *http.Request) {
 	messageId := r.PathValue("messageId")
-	if messageId == "" {
-		http.Error(w, "messageId is required", http.StatusBadRequest)
-		return
-	}
-
-	var data struct {
-		UserId string `json:"user_id"`
-		Type   string `json:"type"`
-		Score  *int   `json:"score"`
-	}
+	var data CreateReactionReq
 
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := data.Validate(messageId); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
