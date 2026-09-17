@@ -14,3 +14,9 @@ CREATE TABLE IF NOT EXISTS reactions (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(message_id, user_id, type)
 );
+
+CREATE INDEX IF NOT EXISTS idx_message_pagination
+ON message (created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_reactions_message_id
+ON reactions (message_id);

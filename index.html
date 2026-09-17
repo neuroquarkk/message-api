@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Message API</title>
+</head>
+
+<body>
+    <div>
+        <label>User ID:</label>
+        <input type="text" id="userId" value="user_demo_1">
+        <button onclick="generateUser()">Generate Random</button>
+    </div>
+    <hr>
+
+    <div>
+        <h3>1. Create Message (POST /messages)</h3>
+        <input type="text" id="msgText" placeholder="Enter message text..." size="40">
+        <button onclick="createMessage()">Post Message</button>
+    </div>
+    <hr>
+
+    <div>
+        <h3>2. Add Reaction (POST /messages/{id}/reactions)</h3>
+        <input type="text" id="reactMsgId" placeholder="Message UUID" size="38">
+        <input type="text" id="reactType" value="like" placeholder="Type (e.g., like)">
+        <input type="number" id="reactScore" value="1" style="width: 50px;">
+        <button onclick="addReaction()">Add Reaction</button>
+    </div>
+    <hr>
+
+    <div>
+        <h3>3. List Messages (GET /messages)</h3>
+        <label>Page:</label>
+        <input type="number" id="page" value="1" style="width: 50px;">
+        <button onclick="getMessages()">Fetch Messages</button>
+    </div>
+    <hr>
+
+    <h3>Response Output:</h3>
+    <pre id="output" style="background: #f4f4f4; padding: 10px; border: 1px solid #ddd; min-height: 100px;"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:8081';
+
+        function logOutput(res, data) {
+            const out = document.getElementById('output');
+            out.innerText = `Status: ${res.status} ${res.statusText}\n\n${JSON.stringify(data, null, 2)}`;
+        }
+
+        function generateUser() {
+            document.getElementById('userId').value = 'user_' + Math.floor(Math.random() * 100000);
+        }
+
+        async function createMessage() {
+            const text = document.getElementById('msgText').value;
+            const uid = document.getElementById('userId').value;
+
+            const res = await fetch(`${API_BASE}/messages`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message_text: text, user_id: uid})
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (data.id) {
+                document.getElementById('reactMsgId').value = data.id;
+            }
+
+            logOutput(res, data);
+        }
+
+        async function addReaction() {
+            const msgId = document.getElementById('reactMsgId').value;
+            const type = document.getElementById('reactType').value;
+            const score = parseInt(document.getElementById('reactScore').value, 10);
+            const uid = document.getElementById('userId').value;
+
+            const res = await fetch(`${API_BASE}/messages/${msgId}/reactions`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: uid, type: type, score: score})
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            logOutput(res, data);
+        }
+
+        async function getMessages() {
+            const page = document.getElementById('page').value;
+
+            const res = await fetch(`${API_BASE}/messages?page=${page}`);
+            const data = await res.json().catch(() => ({}));
+
+            logOutput(res, data);
+        }
+    </script>
+</body>
+
+</html>

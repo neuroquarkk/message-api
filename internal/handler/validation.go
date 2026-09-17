@@ -45,10 +45,6 @@ func (req *CreateReactionReq) Validate(messageId string) error {
 		return errors.New("invalid messageId format")
 	}
 
-	if messageId == "" || len(messageId) != 36 {
-		return errors.New("invalid messageID format")
-	}
-
 	req.UserId = strings.TrimSpace(req.UserId)
 	req.Type = strings.TrimSpace(req.Type)
 

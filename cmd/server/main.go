@@ -16,7 +16,7 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
-		syscall.SIGINT, syscall.SIGABRT,
+		syscall.SIGINT, syscall.SIGTERM,
 	)
 	defer stop()
 
@@ -30,7 +30,7 @@ func main() {
 
 	rconn, err := db.RConn(ctx, cfg.REDIS_URL)
 	if err != nil {
-		log.Fatal("failed to create redis connection: %v\n", err)
+		log.Fatalf("failed to create redis connection: %v\n", err)
 	}
 	defer rconn.Close()
 	log.Println("redis connected")
@@ -41,6 +41,10 @@ func main() {
 	mux.HandleFunc("POST /messages", hdl.CreateMessage)
 	mux.HandleFunc("GET /messages", hdl.ListMessages)
 	mux.HandleFunc("POST /messages/{messageId}/reactions", hdl.CreateReaction)
+
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.PORT,

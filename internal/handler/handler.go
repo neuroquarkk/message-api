@@ -67,6 +67,10 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := pipe.Exec(ctx); err != nil {
 			log.Printf("failed to update redis cache: %v\n", err)
+
+			if err = h.rconn.Del(ctx, h.cacheKey).Err(); err != nil {
+				log.Printf("failed to invalidated corrupted cache: %v\n", err)
+			}
 		}
 	} else {
 		log.Printf("failed to marshal message for cache: %v\n", err)
@@ -83,9 +87,16 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	page := 1
 	pageStr := r.URL.Query().Get("page")
 	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
+		p, err := strconv.Atoi(pageStr)
+		if err != nil {
+			http.Error(w, "invalid page format", http.StatusBadRequest)
+			return
 		}
+		if p < 1 {
+			http.Error(w, "page must be 1 or greated", http.StatusBadRequest)
+			return
+		}
+		page = p
 	}
 
 	limit := 10
