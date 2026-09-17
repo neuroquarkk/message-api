@@ -78,6 +78,8 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	page := 1
 	pageStr := r.URL.Query().Get("page")
 	if pageStr != "" {
@@ -88,44 +90,79 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 	limit := 10
 	offset := (page - 1) * limit
+	var messages []Message
+	cacheHit := false
 
-	query := `
+	if page == 1 {
+		items, err := h.rconn.LRange(ctx, h.cacheKey, 0, 9).Result()
+
+		if err != nil {
+			log.Printf("failed to read message cache: %v\n", err)
+		} else if len(items) == limit {
+			var cached []Message
+			ok := true
+
+			for _, item := range items {
+				var m Message
+				if err := json.Unmarshal([]byte(item), &m); err != nil {
+					log.Printf("failed to unmarshal cached message: %v\n", err)
+					ok = false
+					break
+				}
+
+				m.Reactions = []Reaction{}
+				cached = append(cached, m)
+			}
+
+			if ok {
+				messages = cached
+				cacheHit = true
+			}
+		}
+	}
+
+	if !cacheHit {
+		query := `
 		SELECT id, message_text, user_id, created_at
 		FROM message
 		ORDER BY created_at DESC, id DESC
 		LIMIT $1 OFFSET $2`
 
-	rows, err := h.pconn.Query(r.Context(), query, limit, offset)
-	if err != nil {
-		log.Printf("failed to query message: %v\n", err)
-		http.Error(w, "failed to query messages", http.StatusInternalServerError)
-		return
-	}
-
-	var messages []Message
-	var messageIds []string
-
-	msgIdx := make(map[string]*Message)
-
-	for rows.Next() {
-		var m Message
-		err := rows.Scan(&m.ID, &m.Text, &m.UserID, &m.CreatedAt)
+		rows, err := h.pconn.Query(ctx, query, limit, offset)
 		if err != nil {
-			rows.Close()
-			log.Printf("failed to scan message: %v\n", err)
-			http.Error(w, "failed to scan message", http.StatusInternalServerError)
+			log.Printf("failed to query message: %v\n", err)
+			http.Error(w, "failed to query messages", http.StatusInternalServerError)
 			return
 		}
-		m.Reactions = []Reaction{}
-		messages = append(messages, m)
+		defer rows.Close()
+
+		for rows.Next() {
+			var m Message
+			err := rows.Scan(&m.ID, &m.Text, &m.UserID, &m.CreatedAt)
+			if err != nil {
+				log.Printf("failed to scan message: %v\n", err)
+				http.Error(w, "failed to scan message", http.StatusInternalServerError)
+				return
+			}
+			m.Reactions = []Reaction{}
+			messages = append(messages, m)
+		}
+
+		if err := rows.Err(); err != nil {
+			log.Printf("message rows iteration error: %v\n", err)
+			http.Error(w, "failed to read messages", http.StatusInternalServerError)
+			return
+		}
 	}
-	rows.Close()
 
 	if len(messages) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode([]Message{})
 		return
 	}
+
+	var messageIds []string
+	msgIdx := make(map[string]*Message)
 
 	for i := range messages {
 		messageIds = append(messageIds, messages[i].ID)
@@ -137,7 +174,7 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		FROM reactions
 		WHERE message_id = ANY($1)`
 
-	rxRows, err := h.pconn.Query(r.Context(), rxQuery, messageIds)
+	rxRows, err := h.pconn.Query(ctx, rxQuery, messageIds)
 	if err != nil {
 		log.Printf("failed to query reactions: %v\n", err)
 		http.Error(w, "failed to query reactions", http.StatusInternalServerError)
@@ -151,6 +188,7 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 			&rx.ID, &rx.MessageID, &rx.UserID,
 			&rx.Type, &rx.Score, &rx.CreatedAt,
 		); err != nil {
+			log.Printf("failed to scan reaction: %v\n", err)
 			http.Error(w, "failed to scan reaction", http.StatusInternalServerError)
 			return
 		}
@@ -159,6 +197,12 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 			msg.Reactions = append(msg.Reactions, rx)
 			msg.TotalReactionCount += rx.Score
 		}
+	}
+
+	if err := rxRows.Err(); err != nil {
+		log.Printf("reaction rows iteration error: %v\n", err)
+		http.Error(w, "failed to read reactions", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

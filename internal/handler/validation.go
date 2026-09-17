@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"strings"
+	"uuid"
 )
 
 type CreateMessageReq struct {
@@ -40,6 +41,10 @@ type CreateReactionReq struct {
 }
 
 func (req *CreateReactionReq) Validate(messageId string) error {
+	if _, err := uuid.Parse(messageId); err != nil {
+		return errors.New("invalid messageId format")
+	}
+
 	if messageId == "" || len(messageId) != 36 {
 		return errors.New("invalid messageID format")
 	}
