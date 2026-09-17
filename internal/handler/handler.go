@@ -7,17 +7,25 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
-	pconn *pgxpool.Pool
+	pconn    *pgxpool.Pool
+	rconn    *redis.Client
+	cacheKey string
 }
 
-func New(pconn *pgxpool.Pool) *Handler {
-	return &Handler{pconn: pconn}
+func New(pconn *pgxpool.Pool, rconn *redis.Client) *Handler {
+	return &Handler{
+		pconn:    pconn,
+		rconn:    rconn,
+		cacheKey: "cache:messages",
+	}
 }
 
 func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var data CreateMessageReq
 
 	defer r.Body.Close()
@@ -41,13 +49,27 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 	msg.UserID = data.UserId
 
 	err := h.pconn.QueryRow(
-		r.Context(),
+		ctx,
 		query, msg.Text, msg.UserID,
 	).Scan(&msg.ID, &msg.CreatedAt)
 	if err != nil {
 		log.Printf("failed to insert message: %v\n", err)
 		http.Error(w, "failed to insert message", http.StatusInternalServerError)
 		return
+	}
+
+	msgJson, err := json.Marshal(msg)
+	if err == nil {
+		pipe := h.rconn.TxPipeline()
+
+		pipe.LPush(ctx, h.cacheKey, msgJson)
+		pipe.LTrim(ctx, h.cacheKey, 0, 9)
+
+		if _, err := pipe.Exec(ctx); err != nil {
+			log.Printf("failed to update redis cache: %v\n", err)
+		}
+	} else {
+		log.Printf("failed to marshal message for cache: %v\n", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -28,7 +28,14 @@ func main() {
 	defer pconn.Close()
 	log.Println("postgres connected")
 
-	hdl := handler.New(pconn)
+	rconn, err := db.RConn(ctx, cfg.REDIS_URL)
+	if err != nil {
+		log.Fatal("failed to create redis connection: %v\n", err)
+	}
+	defer rconn.Close()
+	log.Println("redis connected")
+
+	hdl := handler.New(pconn, rconn)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /messages", hdl.CreateMessage)
