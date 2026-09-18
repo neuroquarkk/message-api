@@ -216,6 +216,12 @@ func (h *Handler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	source := "postgres"
+	if cacheHit {
+		source = "redis"
+	}
+
+	w.Header().Set("X-Data-Source", source)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(messages)
 }

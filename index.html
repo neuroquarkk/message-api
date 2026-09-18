@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 
 <head>
@@ -8,92 +8,145 @@
 <body>
     <div>
         <label>User ID:</label>
-        <input type="text" id="userId" value="user_demo_1">
+        <input type="text" id="userId" value="user_demo_1" />
         <button onclick="generateUser()">Generate Random</button>
     </div>
-    <hr>
+    <hr />
 
     <div>
         <h3>1. Create Message (POST /messages)</h3>
-        <input type="text" id="msgText" placeholder="Enter message text..." size="40">
+        <input type="text" id="msgText" placeholder="Enter message text..." size="40" />
         <button onclick="createMessage()">Post Message</button>
     </div>
-    <hr>
+    <hr />
 
     <div>
         <h3>2. Add Reaction (POST /messages/{id}/reactions)</h3>
-        <input type="text" id="reactMsgId" placeholder="Message UUID" size="38">
-        <input type="text" id="reactType" value="like" placeholder="Type (e.g., like)">
-        <input type="number" id="reactScore" value="1" style="width: 50px;">
+        <input type="text" id="reactMsgId" placeholder="Message UUID" size="38" />
+        <input type="text" id="reactType" value="like" placeholder="Type (e.g., like)" />
+        <input type="number" id="reactScore" value="1" style="width: 50px" />
         <button onclick="addReaction()">Add Reaction</button>
     </div>
-    <hr>
+    <hr />
 
     <div>
         <h3>3. List Messages (GET /messages)</h3>
         <label>Page:</label>
-        <input type="number" id="page" value="1" style="width: 50px;">
+        <input type="number" id="page" value="1" style="width: 50px" />
         <button onclick="getMessages()">Fetch Messages</button>
+    </div>
+    <hr />
+
+    <div>
+        <h3>4. Bulk Generate Messages</h3>
+        <label>Count:</label>
+        <input type="number" id="bulkCount" value="10" style="width: 50px;">
+        <button onclick="generateBulkMessages()">Generate & Send</button>
     </div>
     <hr>
 
     <h3>Response Output:</h3>
-    <pre id="output" style="background: #f4f4f4; padding: 10px; border: 1px solid #ddd; min-height: 100px;"></pre>
+    <pre id="output" style="
+        background: #f4f4f4;
+        padding: 10px;
+        border: 1px solid #ddd;
+        min-height: 100px;
+      "></pre>
 
     <script>
-        const API_BASE = 'http://localhost:8081';
+        const API_BASE = "http://localhost:8081";
+
+        const $ = (id) => document.getElementById(id);
+        const val = (id) => $(id).value;
+
+        async function apiCall(endpoint, method = "GET", body = null) {
+            const options = {method, headers: {"Content-Type": "application/json"}};
+            if (body) options.body = JSON.stringify(body);
+
+            const res = await fetch(`${API_BASE}${endpoint}`, options);
+            const data = await res.json().catch(() => ({}));
+            return {res, data};
+        }
 
         function logOutput(res, data) {
-            const out = document.getElementById('output');
-            out.innerText = `Status: ${res.status} ${res.statusText}\n\n${JSON.stringify(data, null, 2)}`;
+            const source = res.headers?.get("X-Data-Source");
+            const sourceInfo = source ? `Data Source: ${source.toUpperCase()}\n` : "";
+
+            $("output").innerText =
+                `Status: ${res.status} ${res.statusText}\n\n` +
+                `${sourceInfo}\n` +
+                `Response:\n${JSON.stringify(data, null, 2)}`;
         }
 
         function generateUser() {
-            document.getElementById('userId').value = 'user_' + Math.floor(Math.random() * 100000);
+            $("userId").value = "user_" + Math.floor(Math.random() * 100000);
         }
 
         async function createMessage() {
-            const text = document.getElementById('msgText').value;
-            const uid = document.getElementById('userId').value;
-
-            const res = await fetch(`${API_BASE}/messages`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message_text: text, user_id: uid})
+            const {res, data} = await apiCall("/messages", "POST", {
+                message_text: val("msgText"),
+                user_id: val("userId")
             });
 
-            const data = await res.json().catch(() => ({}));
-            if (data.id) {
-                document.getElementById('reactMsgId').value = data.id;
-            }
-
+            if (data?.id) $("reactMsgId").value = data.id;
             logOutput(res, data);
         }
 
         async function addReaction() {
-            const msgId = document.getElementById('reactMsgId').value;
-            const type = document.getElementById('reactType').value;
-            const score = parseInt(document.getElementById('reactScore').value, 10);
-            const uid = document.getElementById('userId').value;
-
-            const res = await fetch(`${API_BASE}/messages/${msgId}/reactions`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({user_id: uid, type: type, score: score})
+            const {res, data} = await apiCall(
+                `/messages/${val("reactMsgId")}/reactions`, "POST", {
+                user_id: val("userId"),
+                type: val("reactType"),
+                score: parseInt(val("reactScore"), 10)
             });
-
-            const data = await res.json().catch(() => ({}));
 
             logOutput(res, data);
         }
 
         async function getMessages() {
-            const page = document.getElementById('page').value;
-
-            const res = await fetch(`${API_BASE}/messages?page=${page}`);
-            const data = await res.json().catch(() => ({}));
-
+            const {res, data} = await apiCall(`/messages?page=${val("page")}`);
             logOutput(res, data);
+        }
+
+        async function generateBulkMessages() {
+            const count = parseInt(val("bulkCount"), 10);
+            const uid = val("userId");
+            const out = $("output");
+
+            if (isNaN(count) || count < 1) {
+                return out.innerText = "Please enter a valid count greater than 0";
+            }
+
+            out.innerText = `Generating ${count} messages... please wait`;
+
+            const promises = Array.from({length: count}).map((_, i) => {
+                const randomHex = Math.random().toString(16).slice(2, 8);
+                return fetch(`${API_BASE}/messages`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message_text: `Bulk message ${i + 1} (ID: ${randomHex})`,
+                        user_id: uid
+                    })
+                });
+            });
+
+            try {
+                const responses = await Promise.all(promises);
+                const successes = responses.filter(r => r.ok).length;
+
+                let lastData = {};
+                if (successes > 0) {
+                    lastData = await responses[responses.length - 1].json().catch(() => ({}));
+                }
+
+                out.innerText =
+                    `Status: Complete\n` +
+                    `Successfully created ${successes} out of ${count} messages\n\n` +
+                    `Last Created Message:\n${JSON.stringify(lastData, null, 2)}`;
+            } catch (err) {
+                out.innerText = `Status: Error\nFailed to generate messages: ${err.message}`;
+            }
         }
     </script>
 </body>
